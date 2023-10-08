@@ -4,8 +4,12 @@
 #include <omp.h>
 #include <stdio.h>
 #include <iostream>
+#include <fstream>
+#include <stdexcept>
+
 
 using namespace std;
+
 
 // Function to check if input number is prime or not.
 int is_prime(int num){
@@ -22,7 +26,7 @@ int is_prime(int num){
 
 
 // A function that prints the prime number less than the input number, and distributes the work in parallel among multiple threads.
-void basic_prime_number_generator(int num, int num_threads[], int thread_size){
+map<int, double> basic_prime_number_generator(int num, int num_threads[], int thread_size){
     map<int, double> time_per_thread;
     if (num<2){
         cout << "Invalid number. Type number greater than 1" <<endl;
@@ -74,13 +78,13 @@ void basic_prime_number_generator(int num, int num_threads[], int thread_size){
 
         delete[] prime_nums;
     }
-    
+    return time_per_thread;
 }
 
 
 // A function that prints the prime number less than the input number, and distributes the work in parallel among multiple threads.
 // Used dynamic scheduling with chunk size of 1 for load balancing
-void advanced_prime_number_generator(int num, int num_threads[], int thread_size){
+map<int, double> advanced_prime_number_generator(int num, int num_threads[], int thread_size){
     map<int, double> time_per_thread;
     if (num<2){
         cout << "Invalid number. Type number greater than 1" <<endl;
@@ -99,8 +103,8 @@ void advanced_prime_number_generator(int num, int num_threads[], int thread_size
         is_prime[1] = false;
 
         // use parallel directive with for. Used dynamic scheduling with chunk size of 1 for load balancing
-        #pragma omp parallel for
-        for (int p=2; p*p<= num; p++){
+        #pragma omp parallel for schedule(dynamic, 1)
+        for (int p=2; p<= int(sqrt(num)); p++){
             if(is_prime[p]){
                 for (int j = p*p; j < num; j += p){
                     is_prime[j] = false;
@@ -109,7 +113,7 @@ void advanced_prime_number_generator(int num, int num_threads[], int thread_size
         }
 
         std::vector<int> primes;
-        #pragma omp parallel for
+        #pragma omp parallel for schedule(dynamic, 1)
         for (int i = 2; i < num; i++) {
             if (is_prime[i]) {
                 #pragma omp critical
@@ -131,22 +135,99 @@ void advanced_prime_number_generator(int num, int num_threads[], int thread_size
 
         cout << "Time taken: " << time_per_thread[num_threads[k]] << " seconds." << endl;
         cout << "-----------------------------------------" << endl;
-    }    
+    }
+
+    return time_per_thread;  
+}
+
+
+
+// Function to calculate speedup and efficiency, and then save in csv.
+void save_speedup_and_efficiency_to_csv(map<int, double> &time_per_thread){
+    // Assuming the sequential time is precalculated ( using no. of thread as 1)
+    double T_1 = time_per_thread[1];
+
+    std::vector<double> speedups;
+    std::vector<double> efficiencies;
+    for (const auto& [thread_count, T_P] : time_per_thread){
+        double speedup = T_1/T_P;
+        double efficiency = speedup/thread_count;
+
+        speedups.push_back(speedup);
+        efficiencies.push_back(efficiency);
+    }
+
+    // Open a file in write mode.
+    std::ofstream outfile("result.csv");
+
+    // Error check for file open operation
+    if (!outfile.is_open()){
+        throw std::runtime_error("Failed to open the result.csv file.");
+    }
+
+    // Write the header
+    outfile << "Threads,Speadup,Efficiency\n";
+
+    int i=0;
+    // Writing data to file
+    for (const auto& [thread_count, T_P] : time_per_thread){
+        outfile << thread_count << "," << speedups[i] << "," << efficiencies[i] << "\n";
+        i++;
+    }
+
+    // Close the file
+    outfile.close();
+    
+    if (!outfile.good()) {
+        throw std::runtime_error("Error occurred while writing to the result.csv file.");
+    }
+
+    std::cout << "Data written to result.csv" << std::endl;
 }
 
 
 int main(){
     int num;
-    int num_threads[10] = {2, 4, 6, 8, 10, 12, 14, 16, 18, 20};
+    int option;
+    int num_threads[20] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20};
+    map<int, double> execution_time;
 
-    cout << "Type a number: ";
-    cin >> num;
+    while(true){
+        cout << "Choose one of the following options:\n";
+        cout << "--------------------------------------------------------\n";
+        cout << "1. Prime number generator with basic requirements. Type 1\n";
+        cout << "2. Prime number generator with advanced requirements. Type 2\n";
+        cout << "3. Exit. Type 3\n";
+        cin >> option;
+        switch (option)
+        {
+            case 1:
+                // 1. Prime number generator with basic requirements
+                cout << "\nPrime number generator with basic requirements\n";
+                cout << "--------------------------------------------------------\n\n";
+                cout << "Type a number: ";
+                cin >> num;
+                execution_time = basic_prime_number_generator(num, num_threads, size(num_threads));
+                save_speedup_and_efficiency_to_csv(execution_time);
+                break;
+            
+            case 2:
+                // 2. Prime number generator with advance requirements ( load balancing + advance algorithm to check prime numbers)
+                cout << "\nPrime number generator with basic requirements" << endl;
+                cout << "--------------------------------------------------------\n\n";
+                cout << "Type a number: ";
+                cin >> num;
+                execution_time = advanced_prime_number_generator(num, num_threads, size(num_threads));
+                save_speedup_and_efficiency_to_csv(execution_time);
+                break;
+            case 3:
+                return 0;
+            default:
+                cout << "Please select correct options\n";
+                break;
+        }
 
-    // 1. Prime number generator with basic requirements
-    // basic_prime_number_generator(num, num_threads, size(num_threads));
-
-    // 2. Prime number generator with advance requirements ( load balancing + advance algorithm to check prime numbers)
-    advanced_prime_number_generator(num, num_threads, size(num_threads));
+    }
 
     return 0;
 }
